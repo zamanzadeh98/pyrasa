@@ -18,6 +18,7 @@ def get_peak_params(
     cut_spectrum: tuple[float, float] | None = None,
     peak_threshold: float = 1.0,
     min_peak_height: float = 0.01,
+    min_peak_distance_hz: float = 0.5,
     peak_width_limits: tuple[float, float] = (0.5, 12.0),
 ) -> pd.DataFrame:
     """
@@ -55,6 +56,8 @@ def get_peak_params(
         The minimum peak height (in absolute units of the power spectrum) required for a peak to be recognized.
         This can be useful for filtering out noise or insignificant peaks, especially when a "knee" is present
         in the original data, which may persist in the periodic spectrum. Default is 0.01.
+    min_peak_distance_hz : float, optional
+        The minimum distance between two peaks in Hz to avoid fitting too many peaks in close proximity.
     peak_width_limits : tuple of (float, float), optional
         The lower and upper bounds for peak widths, in Hz. This helps in constraining the peak detection to
         meaningful features. Default is (0.5, 12.0).
@@ -117,10 +120,11 @@ def get_peak_params(
     for ix, ch_name in enumerate(ch_names):
         peaks, peak_dict = dsp.find_peaks(
             filtered_spectrum[ix],
-            height=[filtered_spectrum[ix].min(), filtered_spectrum[ix].max()],
+            distance=int(np.round(min_peak_distance_hz / freq_step)),
+            # height=[filtered_spectrum[ix].min(), filtered_spectrum[ix].max()],
             width=peak_width_limits / freq_step,  # in frequency in hz
             prominence=peak_threshold * np.std(filtered_spectrum[ix]),  # threshold in sd
-            rel_height=0.75,  # relative peak height based on width
+            rel_height=0.5,  # relative peak height based on full width half maximum
         )
 
         peak_list.append(
@@ -129,7 +133,7 @@ def get_peak_params(
                     'ch_name': ch_name,
                     'cf': freqs[peaks],
                     'bw': peak_dict['widths'] * freq_step,
-                    'pw': peak_dict['peak_heights'],
+                    'pw': peak_dict['prominences'],
                 }
             )
         )
