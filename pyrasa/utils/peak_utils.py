@@ -83,7 +83,11 @@ def get_peak_params(  # noqa C901
 
     """
 
+    # constants
     min_n_bins = 2
+    max_polyorder = 2
+    min_winlen = 5  # odd; typical minimum for SG in this use
+    poly_margin = 2  # ensure polyorder <= winlen - POLY_MARGIN
 
     if np.isnan(periodic_spectrum).sum() > 0:
         raise ValueError('peak width detection does not work properly with nans')
@@ -102,9 +106,6 @@ def get_peak_params(  # noqa C901
 
     # filter signal to get a smoother spectrum for peak extraction
     if smooth:
-        max_polyorder = 2
-        min_winlen = 5  # odd; typical minimum for SG in this use
-        poly_margin = 2  # ensure polyorder <= winlen - POLY_MARGIN
 
         def _choose_savgol(
             freq_step: float, smoothing_window_hz: float, polyorder: int | None = None
@@ -151,7 +152,7 @@ def get_peak_params(  # noqa C901
         dist_bins = _hz_to_bins(min_peak_distance_hz, freq_step, min_bins=3, name='min_peak_distance_hz')
 
     width_bins = np.array(peak_width_limits, dtype=float) / freq_step  # in frequency in hz
-    # optional sanity: require >=2 bins min width
+    # require >=2 bins min width
     if width_bins[0] < min_n_bins:
         warnings.warn(
             f'peak_width_limits min ({peak_width_limits[0]} Hz) is < 2 bins at freq_step={freq_step}. '
@@ -165,7 +166,6 @@ def get_peak_params(  # noqa C901
         peaks, peak_dict = dsp.find_peaks(
             x_det,
             distance=dist_bins if dist_bins > 0 else None,
-            # height=[filtered_spectrum[ix].min(), filtered_spectrum[ix].max()],
             width=width_bins,
             prominence=peak_threshold * np.std(x_det),  # threshold in sd
             rel_height=0.5,  # relative peak height based on full width half prominence

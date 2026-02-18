@@ -8,7 +8,7 @@ import scipy.signal as dsp
 
 fs = 1000
 n_seconds = 60
-duration=4
+duration=2
 overlap=0.5
 f_range = (1, 100)
 sim_components = {'sim_powerlaw': {'exponent' : -1}, 
@@ -26,7 +26,7 @@ hset = np.round(hset, 4)
 
 # The `nperseg` input needs to be set to lock in the size of the FFT's
 spectrum_kwargs = {}
-spectrum_kwargs['nperseg'] = int(4 * fs)
+spectrum_kwargs['nperseg'] = int(duration * fs)
 import fractions
 
 psds = np.zeros((len(hset), *psd.shape))
@@ -65,9 +65,8 @@ if thresh is not None:
 irasa_out = irasa(sig, 
                     fs=fs, 
                     band=f_range, 
-                    psd_kwargs={'nperseg': duration*fs, 
-                                'noverlap': duration*fs*overlap
-                            },
+                    nperseg=duration*fs, 
+                    noverlap=duration*fs*overlap,
                     hset_info=(1, 2, 0.05))
 
 #%%
@@ -102,4 +101,8 @@ plt.tight_layout()
 
 
 
+# %%
+irasa_out.get_peaks(peak_width_limits=[1, 10])
+# %%
+plt.plot(irasa_out.periodic.T)
 # %%
