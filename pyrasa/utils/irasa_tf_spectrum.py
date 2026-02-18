@@ -55,7 +55,7 @@ class IrasaTfSpectrum:
     fit_aperiodic_model(fit_func='fixed', scale=False, fit_bounds=None)
         Fit a model to the aperiodic spectrogram at each time point to extract parameter trajectories.
     get_peaks(smooth=True, smoothing_window=1, cut_spectrum=None, peak_threshold=2.5, min_peak_height=0.0,
-              polyorder=1, peak_width_limits=(0.5, 12))
+              polyorder=1, peak_width_limits=(1, 6))
         Extract peak features from the time-varying periodic spectrum across all time points.
     get_aperiodic_error(peak_kwargs=None)
         Compute residual error of the aperiodic component after removing detected periodic peaks for each time slice.
@@ -183,12 +183,13 @@ class IrasaTfSpectrum:
     def get_peaks(
         self,
         smooth: bool = True,
-        smoothing_window: float | int = 1,
+        smoothing_window: float | int = 2,
+        polyorder: int | None = None,
         cut_spectrum: tuple[float, float] | None = None,
-        peak_threshold: float = 2.5,
+        peak_threshold: float = 1.0,
         min_peak_height: float = 0.0,
-        polyorder: int = 1,
-        peak_width_limits: tuple[float, float] = (0.5, 12),
+        min_peak_distance_hz: float | None = None,
+        peak_width_limits: tuple[float, float] = (1.0, 6.0),
     ) -> pd.DataFrame:
         """
         Extracts peak parameters from a periodic spectrogram obtained via IRASA.
@@ -218,6 +219,8 @@ class IrasaTfSpectrum:
             The minimum peak height (in absolute units of the power spectrum) required for a peak to be recognized.
             This can be useful for filtering out noise or insignificant peaks, especially when a "knee" is present
             in the data. Default is 0.01.
+        min_peak_distance_hz : float or None, optional
+            The minimum distance between two peaks in Hz to avoid fitting too many peaks in close proximity.
         peak_width_limits : tuple of (float, float), optional
             The lower and upper bounds for peak widths, in Hz. This helps in constraining the peak detection to
             meaningful features. Default is (0.5, 12).
@@ -251,10 +254,11 @@ class IrasaTfSpectrum:
             ch_names=self.ch_names,
             smooth=smooth,
             smoothing_window=smoothing_window,
+            polyorder=polyorder,
             cut_spectrum=cut_spectrum,
             peak_threshold=peak_threshold,
             min_peak_height=min_peak_height,
-            polyorder=polyorder,
+            min_peak_distance_hz=min_peak_distance_hz,
             peak_width_limits=peak_width_limits,
         )
 

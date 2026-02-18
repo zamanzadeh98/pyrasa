@@ -101,12 +101,13 @@ class PeriodicSpectrumArray(SpectrumArray):
     def get_peaks(
         self: SpectrumArray,
         smooth: bool = True,
-        smoothing_window: float | int = 1,
-        cut_spectrum: tuple[float, float] = (1, 40),
-        peak_threshold: float = 2.5,
+        smoothing_window: int | float = 2,
+        polyorder: int | None = None,
+        cut_spectrum: tuple[float, float] | None = (1, 40),
+        peak_threshold: float = 2.0,
         min_peak_height: float = 0.0,
-        polyorder: int = 1,
-        peak_width_limits: tuple[float, float] = (0.5, 6),
+        min_peak_distance_hz: float | None = None,
+        peak_width_limits: tuple[float, float] = (1, 6),
     ) -> pd.DataFrame:
         """
         Extracts peak parameters from the periodic spectrum obtained via IRASA.
@@ -135,6 +136,8 @@ class PeriodicSpectrumArray(SpectrumArray):
             The minimum peak height (in absolute units of the power spectrum) required for a peak to be recognized.
             This can be useful for filtering out noise or insignificant peaks, especially when a "knee" is present
             in the original data, which may persist in the periodic spectrum. Default is 0.01.
+        min_peak_distance_hz : float or None, optional
+            The minimum distance between two peaks in Hz to avoid fitting too many peaks in close proximity.
         peak_width_limits : tuple of (float, float), optional
             The lower and upper bounds for peak widths, in Hz. This helps in constraining the peak detection to
             meaningful features. Default is (0.5, 12.0).
@@ -171,6 +174,7 @@ class PeriodicSpectrumArray(SpectrumArray):
             cut_spectrum=cut_spectrum,
             peak_threshold=peak_threshold,
             min_peak_height=min_peak_height,
+            min_peak_distance_hz=min_peak_distance_hz,
             polyorder=polyorder,
             peak_width_limits=peak_width_limits,
         )
@@ -372,12 +376,13 @@ class PeriodicEpochsSpectrum(EpochsSpectrumArray):
     def get_peaks(
         self: EpochsSpectrumArray,
         smooth: bool = True,
-        smoothing_window: float | int = 1,
-        cut_spectrum: tuple[float, float] = (1.0, 40.0),
-        peak_threshold: float = 2.5,
+        smoothing_window: int | float = 2,
+        polyorder: int | None = None,
+        cut_spectrum: tuple[float, float] | None = (1, 40),
+        peak_threshold: float = 2.0,
         min_peak_height: float = 0.0,
-        polyorder: int = 1,
-        peak_width_limits: tuple[float, float] = (0.5, 6.0),
+        min_peak_distance_hz: float | None = None,
+        peak_width_limits: tuple[float, float] = (1, 6),
     ) -> pd.DataFrame:
         """
         Extracts peak parameters from the periodic spectrum obtained via IRASA.
@@ -406,6 +411,8 @@ class PeriodicEpochsSpectrum(EpochsSpectrumArray):
             The minimum peak height (in absolute units of the power spectrum) required for a peak to be recognized.
             This can be useful for filtering out noise or insignificant peaks, especially when a "knee" is present
             in the original data, which may persist in the periodic spectrum. Default is 0.01.
+        min_peak_distance_hz : float or None, optional
+            The minimum distance between two peaks in Hz to avoid fitting too many peaks in close proximity.
         peak_width_limits : tuple of (float, float), optional
             The lower and upper bounds for peak widths, in Hz. This helps in constraining the peak detection to
             meaningful features. Default is (0.5, 12.0).
@@ -448,6 +455,7 @@ class PeriodicEpochsSpectrum(EpochsSpectrumArray):
                 peak_threshold=peak_threshold,
                 min_peak_height=min_peak_height,
                 polyorder=polyorder,
+                min_peak_distance_hz=min_peak_distance_hz,
                 peak_width_limits=peak_width_limits,
             )
 
