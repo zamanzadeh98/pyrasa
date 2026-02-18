@@ -1,5 +1,6 @@
 """Utilities for extracting peak parameters."""
 
+import warnings
 from collections.abc import Iterable
 
 import numpy as np
@@ -8,18 +9,18 @@ import scipy.signal as dsp
 
 
 # %% find peaks irasa style
-def get_peak_params(
+def get_peak_params(  # noqa C901
     periodic_spectrum: np.ndarray,
     freqs: np.ndarray,
     ch_names: Iterable | None = None,
     smooth: bool = True,
-    smoothing_window: int | float = 1,
-    polyorder: int = 1,
+    smoothing_window: int | float = 2,
     cut_spectrum: tuple[float, float] | None = None,
+    polyorder: int | None = None,
     peak_threshold: float = 1.0,
-    min_peak_height: float = 0.01,
-    min_peak_distance_hz: float = 0.5,
-    peak_width_limits: tuple[float, float] = (0.5, 12.0),
+    min_peak_height: float = 0.0,
+    min_peak_distance_hz: float | None = None,
+    peak_width_limits: tuple[float, float] = (1.0, 6.0),
 ) -> pd.DataFrame:
     """
     Extracts peak parameters from the periodic spectrum obtained via IRASA.
@@ -43,9 +44,6 @@ def get_peak_params(
         better identifying peaks. Default is True.
     smoothing_window : int or float, optional
         The size of the smoothing window in Hz, passed to the Savitzky-Golay filter. Default is 1 Hz.
-    polyorder : int, optional
-        The polynomial order for the Savitzky-Golay filter used in smoothing. The polynomial order must be
-        less than the window length. Default is 1.
     cut_spectrum : tuple of (float, float) or None, optional
         Tuple specifying the frequency range (lower_bound, upper_bound) to which the spectrum should be cut
         before peak extraction. If None, peaks are detected across the full frequency range. Default is None.
@@ -85,6 +83,12 @@ def get_peak_params(
 
     """
 
+    # constants
+    min_n_bins = 2
+    max_polyorder = 2
+    min_winlen = 5  # odd; typical minimum for SG in this use
+    poly_margin = 2  # ensure polyorder <= winlen - POLY_MARGIN
+
     if np.isnan(periodic_spectrum).sum() > 0:
         raise ValueError('peak width detection does not work properly with nans')
 
@@ -102,29 +106,69 @@ def get_peak_params(
 
     # filter signal to get a smoother spectrum for peak extraction
     if smooth:
-        window_length = int(smoothing_window // freq_step)
-        assert window_length > polyorder, (
-            'The smoothing window is too small you either need to increase \n'
-            '`smoothing_window` or decrease the `polyorder`.'
-        )
 
-        filtered_spectrum = dsp.savgol_filter(periodic_spectrum, window_length=window_length, polyorder=polyorder)
+        def _choose_savgol(
+            freq_step: float, smoothing_window_hz: float, polyorder: int | None = None
+        ) -> tuple[int, int]:
+            def _pick_polyorder(winlen: int) -> int:
+                # largest safe order, capped for stability
+                return max(1, min(max_polyorder, winlen - poly_margin))
+
+            winlen = int(np.round(smoothing_window_hz / freq_step))
+            winlen = max(winlen, min_winlen)
+            if winlen % 2 == 0:
+                winlen += 1
+
+            if polyorder is None:
+                poly = _pick_polyorder(winlen)
+            else:
+                poly = int(polyorder)
+                if poly >= winlen:
+                    poly = winlen - poly_margin
+                    poly = max(poly, 1)
+                    warnings.warn(f'polyorder adjusted to {poly} for window_length={winlen}', RuntimeWarning)
+
+            return winlen, poly
+
+        win, poly = _choose_savgol(freq_step, smoothing_window, polyorder=polyorder)
+
+        filtered_spectrum = dsp.savgol_filter(periodic_spectrum, window_length=win, polyorder=poly, mode='interp')
     else:
         filtered_spectrum = periodic_spectrum
-    # zero out negative values
-    # filtered_spectrum[filtered_spectrum < 0] = 0
-    # filtered_spectrum = np.log10(np.abs(filtered_spectrum.min()) + filtered_spectrum + 1e-1)
-    # filtered_spectrum += np.abs(filtered_spectrum.min())
-    # do peak finding on a channel by channel basis
+
+    def _hz_to_bins(val_hz: float, freq_step: float, *, min_bins: int = 1, name: str = 'param') -> int:
+        bins = int(np.round(val_hz / freq_step))
+        if val_hz > 0 and bins < min_bins:
+            warnings.warn(
+                f'{name}={val_hz} Hz with freq_step={freq_step} Hz gives {bins} bin(s); '
+                f'using {min_bins} bin(s) instead.',
+                RuntimeWarning,
+            )
+            bins = min_bins
+        return bins
+
+    dist_bins = 0
+    if min_peak_distance_hz and min_peak_distance_hz > 0:
+        dist_bins = _hz_to_bins(min_peak_distance_hz, freq_step, min_bins=3, name='min_peak_distance_hz')
+
+    width_bins = np.array(peak_width_limits, dtype=float) / freq_step  # in frequency in hz
+    # require >=2 bins min width
+    if width_bins[0] < min_n_bins:
+        warnings.warn(
+            f'peak_width_limits min ({peak_width_limits[0]} Hz) is < 2 bins at freq_step={freq_step}. '
+            'Width estimates may be unstable as you are trying to find peaks with a width of 1 bin.',
+            RuntimeWarning,
+        )
+
     peak_list = []
     for ix, ch_name in enumerate(ch_names):
+        x_det = np.clip(filtered_spectrum[ix], 0, None)
         peaks, peak_dict = dsp.find_peaks(
-            filtered_spectrum[ix],
-            distance=int(np.round(min_peak_distance_hz / freq_step)),
-            # height=[filtered_spectrum[ix].min(), filtered_spectrum[ix].max()],
-            width=peak_width_limits / freq_step,  # in frequency in hz
-            prominence=peak_threshold * np.std(filtered_spectrum[ix]),  # threshold in sd
-            rel_height=0.5,  # relative peak height based on full width half maximum
+            x_det,
+            distance=dist_bins if dist_bins > 0 else None,
+            width=width_bins,
+            prominence=peak_threshold * np.std(x_det),  # threshold in sd
+            rel_height=0.5,  # relative peak height based on full width half prominence
         )
 
         peak_list.append(
@@ -160,11 +204,12 @@ def get_peak_params_sprint(
     ch_names: Iterable | None = None,
     smooth: bool = True,
     smoothing_window: int | float = 2,
-    polyorder: int = 1,
+    polyorder: int | None = None,
     cut_spectrum: tuple[float, float] | None = None,
-    peak_threshold: int | float = 1,
+    peak_threshold: int | float = 2,
     min_peak_height: float = 0.01,
-    peak_width_limits: tuple[float, float] = (0.5, 12),
+    min_peak_distance_hz: float | None = None,
+    peak_width_limits: tuple[float, float] = (1, 6.0),
 ) -> pd.DataFrame:
     """
     Extracts peak parameters from a periodic spectrogram obtained via IRASA.
@@ -203,6 +248,8 @@ def get_peak_params_sprint(
         The minimum peak height (in absolute units of the power spectrum) required for a peak to be recognized.
         This can be useful for filtering out noise or insignificant peaks, especially when a "knee" is present
         in the data. Default is 0.01.
+    min_peak_distance_hz : float, optional
+        The minimum distance between two peaks in Hz to avoid fitting too many peaks in close proximity.
     peak_width_limits : tuple of (float, float), optional
         The lower and upper bounds for peak widths, in Hz. This helps in constraining the peak detection to
         meaningful features. Default is (0.5, 12).
@@ -242,6 +289,7 @@ def get_peak_params_sprint(
             cut_spectrum=cut_spectrum,
             peak_threshold=peak_threshold,
             min_peak_height=min_peak_height,
+            min_peak_distance_hz=min_peak_distance_hz,
             peak_width_limits=peak_width_limits,
         )
         cur_df['time'] = t

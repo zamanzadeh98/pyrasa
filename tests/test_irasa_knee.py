@@ -138,7 +138,7 @@ def test_aperiodic_error_tf(ts4sprint_knee, fs, exponent_1, exponent_2):
         'smooth': True,
         'smoothing_window': 3,
         'min_peak_height': 0.01,
-        'peak_width_limits': (0.5, 12),
+        'peak_width_limits': (2, 6),
     }
 
     assert np.mean(irasa_out.get_aperiodic_error(peak_kwargs=kwargs)) < np.mean(

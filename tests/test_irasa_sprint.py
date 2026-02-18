@@ -45,7 +45,7 @@ def test_irasa_sprint(ts4sprint, fs, exponent_1, exponent_2):
         smooth=True,
         smoothing_window=3,
         min_peak_height=0.01,
-        peak_width_limits=(0.5, 12),
+        peak_width_limits=(1, 6),
     )
 
     df_alpha = get_band_info(df_peaks, freq_range=(8, 12), ch_names=[])
